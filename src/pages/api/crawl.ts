@@ -74,76 +74,76 @@ export default async function handler(
   const crawler = new Crawler(urls, crawlLimit, 200)
   const pages = await crawler.start() as Page[]
 
-  const documents = await Promise.all(pages.map(async row => {
+  // const documents = await Promise.all(pages.map(async row => {
 
-    const splitter = new TokenTextSplitter({
-      encodingName: "gpt2",
-      chunkSize: 300,
-      chunkOverlap: 20,
-    });
+  //   const splitter = new TokenTextSplitter({
+  //     encodingName: "gpt2",
+  //     chunkSize: 300,
+  //     chunkOverlap: 20,
+  //   });
 
-    const pageContent = shouldSummarize ? await summarizeLongDocument({ document: row.text }) : row.text
+  //   const pageContent = shouldSummarize ? await summarizeLongDocument({ document: row.text }) : row.text
 
-    const docs = splitter.splitDocuments([
-      new Document({ pageContent, metadata: { url: row.url, text: truncateStringByBytes(pageContent, 36000) } }),
-    ]);
-    return docs
-  }))
+  //   const docs = splitter.splitDocuments([
+  //     new Document({ pageContent, metadata: { url: row.url, text: truncateStringByBytes(pageContent, 36000) } }),
+  //   ]);
+  //   return docs
+  // }))
 
 
 
   const index = pinecone && pinecone.Index(pineconeIndexName);
+  res.status(200).json({ message: "Done" })
+  // const embedder = new OpenAIEmbeddings({
+  //   modelName: "text-embedding-ada-002"
+  // })
+  // let counter = 0
 
-  const embedder = new OpenAIEmbeddings({
-    modelName: "text-embedding-ada-002"
-  })
-  let counter = 0
+  // //Embed the documents
+  // const getEmbedding = async (doc: Document) => {
+  //   const embedding = await embedder.embedQuery(doc.pageContent)
+  //   console.log(doc.pageContent)
+  //   console.log("got embedding", embedding.length)
+  //   process.stdout.write(`${Math.floor((counter / documents.flat().length) * 100)}%\r`)
+  //   counter = counter + 1
+  //   return {
+  //     id: uuid(),
+  //     values: embedding,
+  //     metadata: {
+  //       chunk: doc.pageContent,
+  //       text: doc.metadata.text as string,
+  //       url: doc.metadata.url as string,
+  //     }
+  //   } as Vector
+  // }
+  // const rateLimitedGetEmbedding = limiter.wrap(getEmbedding);
+  // process.stdout.write("100%\r")
+  // console.log("done embedding");
 
-  //Embed the documents
-  const getEmbedding = async (doc: Document) => {
-    const embedding = await embedder.embedQuery(doc.pageContent)
-    console.log(doc.pageContent)
-    console.log("got embedding", embedding.length)
-    process.stdout.write(`${Math.floor((counter / documents.flat().length) * 100)}%\r`)
-    counter = counter + 1
-    return {
-      id: uuid(),
-      values: embedding,
-      metadata: {
-        chunk: doc.pageContent,
-        text: doc.metadata.text as string,
-        url: doc.metadata.url as string,
-      }
-    } as Vector
-  }
-  const rateLimitedGetEmbedding = limiter.wrap(getEmbedding);
-  process.stdout.write("100%\r")
-  console.log("done embedding");
+  // let vectors = [] as Vector[]
 
-  let vectors = [] as Vector[]
-
-  try {
-    vectors = await Promise.all(documents.flat().map((doc) => rateLimitedGetEmbedding(doc))) as unknown as Vector[]
-    const chunks = sliceIntoChunks(vectors, 10)
-    console.log(chunks.length)
+  // try {
+  //   vectors = await Promise.all(documents.flat().map((doc) => rateLimitedGetEmbedding(doc))) as unknown as Vector[]
+  //   const chunks = sliceIntoChunks(vectors, 10)
+  //   console.log(chunks.length)
 
 
-    try {
-      await Promise.all(chunks.map(async chunk => {
-        await index!.upsert({
-          upsertRequest: {
-            vectors: chunk as Vector[],
-            namespace: ""
-          }
-        })
-      }))
+  //   try {
+  //     await Promise.all(chunks.map(async chunk => {
+  //       await index!.upsert({
+  //         upsertRequest: {
+  //           vectors: chunk as Vector[],
+  //           namespace: ""
+  //         }
+  //       })
+  //     }))
 
-      res.status(200).json({ message: "Done" })
-    } catch (e) {
-      console.log(e)
-      res.status(500).json({ message: `Error ${JSON.stringify(e)}` })
-    }
-  } catch (e) {
-    console.log(e)
-  }
+  //     res.status(200).json({ message: "Done" })
+  //   } catch (e) {
+  //     console.log(e)
+  //     res.status(500).json({ message: `Error ${JSON.stringify(e)}` })
+  //   }
+  // } catch (e) {
+  //   console.log(e)
+  // }
 }

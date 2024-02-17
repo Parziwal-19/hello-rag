@@ -247,10 +247,10 @@
   resolved "https://registry.npmjs.org/@next/font/-/font-13.1.6.tgz"
   integrity sha512-AITjmeb1RgX1HKMCiA39ztx2mxeAyxl4ljv2UoSBUGAbFFMg8MO7YAvjHCgFhD39hL7YTbFjol04e/BPBH5RzQ==
 
-"@next/swc-darwin-arm64@13.1.6":
+"@next/swc-darwin-x64@13.1.6":
   version "13.1.6"
-  resolved "https://registry.npmjs.org/@next/swc-darwin-arm64/-/swc-darwin-arm64-13.1.6.tgz"
-  integrity sha512-KKRQH4DDE4kONXCvFMNBZGDb499Hs+xcFAwvj+rfSUssIDrZOlyfJNy55rH5t2Qxed1e4K80KEJgsxKQN1/fyw==
+  resolved "https://registry.npmjs.org/@next/swc-darwin-x64/-/swc-darwin-x64-13.1.6.tgz"
+  integrity sha512-/uOky5PaZDoaU99ohjtNcDTJ6ks/gZ5ykTQDvNZDjIoCxFe3+t06bxsTPY6tAO6uEAw5f6vVFX5H5KLwhrkZCA==
 
 "@nodelib/fs.scandir@2.1.5":
   version "2.1.5"
@@ -289,10 +289,10 @@
     mkdirp "^1.0.4"
     rimraf "^3.0.2"
 
-"@pinecone-database/pinecone@*", "@pinecone-database/pinecone@^0.0.10":
-  version "0.0.10"
-  resolved "https://registry.npmjs.org/@pinecone-database/pinecone/-/pinecone-0.0.10.tgz"
-  integrity sha512-SwfobqOmSQvEkEtw44uc6ZZ9R/aU5bDYkBAX0cGOcSk6wWlm5yiJA+XeZkyMeUsFb1EQaGhbafIy97TDqcnnsw==
+"@pinecone-database/pinecone@*", "@pinecone-database/pinecone@^0.1.5":
+  version "0.1.6"
+  resolved "https://registry.npmjs.org/@pinecone-database/pinecone/-/pinecone-0.1.6.tgz"
+  integrity sha512-tCnVc28udecthhgSBTdcMhYEW+xsR++AdZasp+ZE/AvUD1hOR2IR3edjk9m0sDxZyvXbno2KeqUbLIOZr7sCTw==
   dependencies:
     cross-fetch "^3.1.5"
 

@@ -37,32 +37,46 @@ class Crawler {
     $("nav").remove();
     $("img").remove();
     const title = $("title").text() || $(".article-title").text();
-    const html = $("body").html();
-    const text = turndownService.turndown(html);
+    //const html = $("body").html();
+    const court = $('.judgments .docsource_main').text();
+    //const title = $('.judgments .doc_title').text();
+    const citations = $('.judgments .doc_citations').text();
+    const author = $('.judgments .doc_author').text();
+    const bench = $('.judgments .doc_bench').text();
+    const content = $('.judgments').text();
+
+
+
+    const text = turndownService.turndown(content);
     console.log("crawling ", doc.url)
     const page: Page = {
       url: doc.url,
       text,
       title,
+      court,
+      citations,
+      author,
+      bench
     };
     if (text.length > this.textLengthMinimum) {
       this.pages.push(page);
     }
+    console.log(page)
 
 
-    doc.$("a").each((i: number, elem: any) => {
-      var href = doc.$(elem).attr("href")?.split("#")[0];
-      var targetUrl = href && doc.resolve(href);
-      // crawl more
-      if (targetUrl && this.urls.some(u => {
-        const targetUrlParts = parse(targetUrl);
-        const uParts = parse(u);
-        return targetUrlParts.hostname === uParts.hostname
-      }) && this.count < this.limit) {
-        this.spider.queue(targetUrl, this.handleRequest);
-        this.count = this.count + 1
-      }
-    });
+    // doc.$("a").each((i: number, elem: any) => {
+    //   var href = doc.$(elem).attr("href")?.split("#")[0];
+    //   var targetUrl = href && doc.resolve(href);
+    //   // crawl more
+    //   if (targetUrl && this.urls.some(u => {
+    //     const targetUrlParts = parse(targetUrl);
+    //     const uParts = parse(u);
+    //     return targetUrlParts.hostname === uParts.hostname
+    //   }) && this.count < this.limit) {
+    //     this.spider.queue(targetUrl, this.handleRequest);
+    //     this.count = this.count + 1
+    //   }
+    // });
   };
 
   start = async () => {
