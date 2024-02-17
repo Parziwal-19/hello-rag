@@ -53,8 +53,9 @@ export default async function handler(
   }
 
   const { query } = req;
-  const { urls: urlString, limit, indexName, summmarize } = query;
-  const urls = (urlString as string).split(",");
+  const { arrayID, limit, indexName, summmarize } = query;
+  const ids = typeof arrayID === 'string' ? JSON.parse(arrayID) : arrayID;
+  console.log(ids)
   const crawlLimit = parseInt(limit as string) || 100;
   const pineconeIndexName = indexName as string || process.env.PINECONE_INDEX_NAME!
   const shouldSummarize = summmarize === "true"
@@ -71,7 +72,7 @@ export default async function handler(
     throw new Error(`Index ${pineconeIndexName} does not exist`)
   }
 
-  const crawler = new Crawler(urls, crawlLimit, 200)
+  const crawler = new Crawler(ids, crawlLimit, 200)
   const pages = await crawler.start() as Page[]
 
   // const documents = await Promise.all(pages.map(async row => {

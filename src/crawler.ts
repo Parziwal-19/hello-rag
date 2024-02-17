@@ -4,6 +4,8 @@ import * as Spider from 'node-spider'
 import * as  TurndownService from 'turndown'
 import * as cheerio from 'cheerio'
 import parse from 'url-parse'
+import { writeFileSync } from 'fs';
+import { join } from 'path';
 const turndownService = new TurndownService();
 
 export type Page = {
@@ -14,13 +16,13 @@ export type Page = {
 class Crawler {
   pages: Page[] = [];
   limit: number = 1000;
-  urls: string[] = [];
+  ids: string[] = [];
   spider: Spider | null = {};
   count: number = 0;
   textLengthMinimum: number = 200;
 
-  constructor(urls: string[], limit: number = 1000, textLengthMinimum: number = 200) {
-    this.urls = urls;
+  constructor(ids: string[], limit: number = 1000, textLengthMinimum: number = 200) {
+    this.ids = ids;
     this.limit = limit
     this.textLengthMinimum = textLengthMinimum
 
@@ -45,6 +47,17 @@ class Crawler {
     const bench = $('.judgments .doc_bench').text();
     const content = $('.judgments').text();
 
+    const htmlContent = doc.res.body;
+    const idForRun = doc.url.split('/')[4];
+    const filePath = join('/Users/ishanjoglekar/Documents/GitHub/illegal-chats/', 'public', 'original_htmls', `${idForRun}.html`);
+    
+
+    try {
+      writeFileSync(filePath, htmlContent);
+      console.log(`HTML content saved for ID: ${idForRun}`);
+    } catch (error) {
+      console.error(`Failed to save HTML content for ID: ${idForRun}`, error);
+    }
 
 
     const text = turndownService.turndown(content);
@@ -101,8 +114,10 @@ class Crawler {
         headers: { "user-agent": "node-spider" },
         encoding: "utf8",
       });
-      this.urls.forEach((url) => {
-        this.spider.queue(url, this.handleRequest);
+     // console.log('here')
+    //  console.log(this.ids)
+      this.ids.forEach((id) => {
+        this.spider.queue("https://indiankanoon.org/doc/"+id+"/", this.handleRequest);
       });
     })
   }
