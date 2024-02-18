@@ -3,7 +3,7 @@ import { PineconeClient, Vector } from "@pinecone-database/pinecone";
 import { Crawler, Page } from "../../crawler";
 import { Document } from "langchain/document";
 
-import { HuggingFaceTransformersEmbeddings } from "langchain/community/embeddings/hf_transformers";
+import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddings/hf_transformers";
 import Bottleneck from "bottleneck";
 import { uuid } from "uuidv4";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
@@ -45,111 +45,133 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (!process.env.PINECONE_INDEX_NAME) {
-    res.status(500).json({ message: "PINECONE_INDEX_NAME not set" });
-    return;
-  }
+  try {
+    if (!process.env.PINECONE_INDEX_NAME) {
+      res.status(500).json({ message: "PINECONE_INDEX_NAME not set" });
+      return;
+    }
 
-  const { query } = req;
-  const { arrayID, limit, indexName, summmarize } = query;
-  const ids = typeof arrayID === "string" ? JSON.parse(arrayID) : arrayID;
-  console.log(ids);
-  const crawlLimit = parseInt(limit as string) || 100;
-  const pineconeIndexName =
-    (indexName as string) || process.env.PINECONE_INDEX_NAME!;
-  const shouldSummarize = summmarize === "true";
+    const { query } = req;
+    const { arrayID, limit, indexName, summmarize } = query;
+    const ids = typeof arrayID === "string" ? JSON.parse(arrayID) : arrayID;
+    console.log(ids);
+    const crawlLimit = parseInt(limit as string) || 100;
+    const pineconeIndexName =
+      (indexName as string) || process.env.PINECONE_INDEX_NAME!;
+    const shouldSummarize = summmarize === "true";
 
-  if (!pinecone) {
-    await initPineconeClient();
-  }
+    if (!pinecone) {
+      await initPineconeClient();
+    }
 
-  const indexes = pinecone && (await pinecone.listIndexes());
-  if (!indexes?.includes(pineconeIndexName)) {
-    res.status(500).json({
-      message: `Index ${pineconeIndexName} does not exist`,
-    });
-    throw new Error(`Index ${pineconeIndexName} does not exist`);
-  }
-
-  const crawler = new Crawler(ids, crawlLimit, 200);
-  const pages = (await crawler.start()) as Page[];
-
-  const documents = await Promise.all(
-    pages.map(async (row) => {
-      //TODO: @sid explire contextal chunk headers below
-      const splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1536,
-        chunkOverlap: 1,
+    const indexes = pinecone && (await pinecone.listIndexes());
+    if (!indexes?.includes(pineconeIndexName)) {
+      res.status(500).json({
+        message: `Index ${pineconeIndexName} does not exist`,
       });
+      throw new Error(`Index ${pineconeIndexName} does not exist`);
+    }
 
-      const pageContent = shouldSummarize
-        ? await summarizeLongDocument({ document: row.text })
-        : row.text;
+    const crawler = new Crawler(ids, crawlLimit, 200);
+    const pages = (await crawler.start()) as Page[];
 
-      const docs = splitter.splitDocuments([
-        new Document({
-          pageContent,
-          metadata: {
-            url: row.url,
-            text: truncateStringByBytes(pageContent, 36000),
-          },
-        }),
-      ]);
-      return docs;
-    })
-  );
+    const documents = await Promise.all(
+      pages.map(async (row) => {
+        //TODO: @sid explire contextal chunk headers below
+        const splitter = new RecursiveCharacterTextSplitter({
+          chunkSize: 1536,
+          chunkOverlap: 1,
+        });
 
-  const index = pinecone && pinecone.Index(pineconeIndexName);
+        // const pageContent = shouldSummarize
+        //   ? await summarizeLongDocument({ document: row.text })
+        //   : row.text;
+        const pageContent = row.text;
 
-  // const embedder = new OpenAIEmbeddings({
-  //   modelName: "text-embedding-ada-002"
-  // })
-  // let counter = 0
+        const docs = splitter.splitDocuments([
+          new Document({
+            pageContent,
+            metadata: {
+              url: row.url,
+              title: row.title,
+              court: row.court,
+              citations: row.citations,
+              author: row.author,
+              bench: row.bench,
+              // text: truncateStringByBytes(pageContent, 36000),
+            },
+          }),
+        ]);
+        return docs;
+      })
+    );
+    console.log(documents);
+    const index = pinecone && pinecone.Index(pineconeIndexName);
 
-  // //Embed the documents
-  // const getEmbedding = async (doc: Document) => {
-  //   const embedding = await embedder.embedQuery(doc.pageContent)
-  //   console.log(doc.pageContent)
-  //   console.log("got embedding", embedding.length)
-  //   process.stdout.write(`${Math.floor((counter / documents.flat().length) * 100)}%\r`)
-  //   counter = counter + 1
-  //   return {
-  //     id: uuid(),
-  //     values: embedding,
-  //     metadata: {
-  //       chunk: doc.pageContent,
-  //       text: doc.metadata.text as string,
-  //       url: doc.metadata.url as string,
-  //     }
-  //   } as Vector
-  // }
-  // const rateLimitedGetEmbedding = limiter.wrap(getEmbedding);
-  // process.stdout.write("100%\r")
-  // console.log("done embedding");
+    const embedder = new HuggingFaceTransformersEmbeddings({
+      modelName: "Xenova/bge-m3",
+    });
+    let counter = 0;
+    // res.status(200).json({ message: "Done" });
+    // //Embed the documents
+    const getEmbedding = async (doc: Document) => {
+      console.log("gettttting embedding...");
+      const embedding = await embedder.embedQuery(doc.pageContent);
+      console.log(doc.pageContent);
+      console.log("got embedding", embedding.length);
+      process.stdout.write(
+        `${Math.floor((counter / documents.flat().length) * 100)}%\r`
+      );
+      counter = counter + 1;
+      return {
+        id: uuid(),
+        values: embedding,
+        metadata: {
+          chunk: doc.pageContent,
+          text: doc.metadata.text as string,
+          url: doc.metadata.url as string,
+          court: doc.metadata.court as string,
+          title: doc.metadata.title as string,
+          author: doc.metadata.author as string,
+          bench: doc.metadata.bench as string,
+        },
+      } as Vector;
+    };
+    const rateLimitedGetEmbedding = limiter.wrap(getEmbedding);
+    process.stdout.write("100%\r");
+    console.log("done embedding");
 
-  // let vectors = [] as Vector[]
+    let vectors = [] as Vector[];
 
-  // try {
-  //   vectors = await Promise.all(documents.flat().map((doc) => rateLimitedGetEmbedding(doc))) as unknown as Vector[]
-  //   const chunks = sliceIntoChunks(vectors, 10)
-  //   console.log(chunks.length)
+    try {
+      vectors = (await Promise.all(
+        documents.flat().map((doc) => rateLimitedGetEmbedding(doc))
+      )) as unknown as Vector[];
+      const chunks = sliceIntoChunks(vectors, 10);
+      console.log(chunks.length);
 
-  //   try {
-  //     await Promise.all(chunks.map(async chunk => {
-  //       await index!.upsert({
-  //         upsertRequest: {
-  //           vectors: chunk as Vector[],
-  //           namespace: ""
-  //         }
-  //       })
-  //     }))
+      try {
+        await Promise.all(
+          chunks.map(async (chunk) => {
+            await index!.upsert({
+              upsertRequest: {
+                vectors: chunk as Vector[],
+                namespace: "",
+              },
+            });
+          })
+        );
 
-  //     res.status(200).json({ message: "Done" })
-  //   } catch (e) {
-  //     console.log(e)
-  //     res.status(500).json({ message: `Error ${JSON.stringify(e)}` })
-  //   }
-  // } catch (e) {
-  //   console.log(e)
-  // }
+        res.status(200).json({ message: "Done" });
+      } catch (e) {
+        console.log(e);
+        res.status(500).json({ message: `Error ${JSON.stringify(e)}` });
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  } catch (e) {
+    console.log(e);
+    res.status(500).json({ message: `Error ${JSON.stringify(e)}` });
+  }
 }

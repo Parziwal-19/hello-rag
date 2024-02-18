@@ -1,18 +1,21 @@
 //@ts-ignore
-import * as Spider from 'node-spider'
+import * as Spider from "node-spider";
 //@ts-ignore
-import * as  TurndownService from 'turndown'
-import * as cheerio from 'cheerio'
-import parse from 'url-parse'
-import { writeFileSync } from 'fs';
-import { join } from 'path';
+import * as TurndownService from "turndown";
+import * as cheerio from "cheerio";
+import parse from "url-parse";
+import { join } from "path";
 const turndownService = new TurndownService();
 
 export type Page = {
-  url: string,
-  text: string,
-  title: string,
-}
+  url: string;
+  text: string;
+  title: string;
+  court: string;
+  citations: string;
+  author: string;
+  bench: string;
+};
 class Crawler {
   pages: Page[] = [];
   limit: number = 1000;
@@ -21,14 +24,18 @@ class Crawler {
   count: number = 0;
   textLengthMinimum: number = 200;
 
-  constructor(ids: string[], limit: number = 1000, textLengthMinimum: number = 200) {
+  constructor(
+    ids: string[],
+    limit: number = 1000,
+    textLengthMinimum: number = 200
+  ) {
     this.ids = ids;
-    this.limit = limit
-    this.textLengthMinimum = textLengthMinimum
+    this.limit = limit;
+    this.textLengthMinimum = textLengthMinimum;
 
-    this.count = 0
+    this.count = 0;
     this.pages = [];
-    this.spider = {}
+    this.spider = {};
   }
 
   handleRequest = (doc: any) => {
@@ -40,17 +47,21 @@ class Crawler {
     $("img").remove();
     const title = $("title").text() || $(".article-title").text();
     //const html = $("body").html();
-    const court = $('.judgments .docsource_main').text();
+    const court = $(".judgments .docsource_main").text();
     //const title = $('.judgments .doc_title').text();
-    const citations = $('.judgments .doc_citations').text();
-    const author = $('.judgments .doc_author').text();
-    const bench = $('.judgments .doc_bench').text();
-    const content = $('.judgments').text();
+    const citations = $(".judgments .doc_citations").text();
+    const author = $(".judgments .doc_author").text();
+    const bench = $(".judgments .doc_bench").text();
+    const content = $(".judgments").text();
 
     const htmlContent = doc.res.body;
-    const idForRun = doc.url.split('/')[4];
-    const filePath = join('/Users/ishanjoglekar/Documents/GitHub/illegal-chats/', 'public', 'original_htmls', `${idForRun}.html`);
-    
+    const idForRun = doc.url.split("/")[4];
+    const filePath = join(
+      "/Users/ishanjoglekar/Documents/GitHub/illegal-chats/",
+      "public",
+      "original_htmls",
+      `${idForRun}.html`
+    );
 
     try {
       writeFileSync(filePath, htmlContent);
@@ -59,9 +70,8 @@ class Crawler {
       console.error(`Failed to save HTML content for ID: ${idForRun}`, error);
     }
 
-
     const text = turndownService.turndown(content);
-    console.log("crawling ", doc.url)
+    console.log("crawling ", doc.url);
     const page: Page = {
       url: doc.url,
       text,
@@ -69,13 +79,12 @@ class Crawler {
       court,
       citations,
       author,
-      bench
+      bench,
     };
     if (text.length > this.textLengthMinimum) {
       this.pages.push(page);
     }
-    console.log(page)
-
+    // console.log(page);
 
     // doc.$("a").each((i: number, elem: any) => {
     //   var href = doc.$(elem).attr("href")?.split("#")[0];
@@ -93,7 +102,7 @@ class Crawler {
   };
 
   start = async () => {
-    this.pages = []
+    this.pages = [];
     return new Promise((resolve, reject) => {
       this.spider = new Spider({
         concurrent: 5,
@@ -105,22 +114,25 @@ class Crawler {
         keepAlive: false,
         error: (err: any, url: string) => {
           console.log(err, url);
-          reject(err)
+          reject(err);
         },
         // Called when there are no more requests
         done: () => {
-          resolve(this.pages)
+          resolve(this.pages);
         },
         headers: { "user-agent": "node-spider" },
         encoding: "utf8",
       });
-     // console.log('here')
-    //  console.log(this.ids)
+      // console.log('here')
+      //  console.log(this.ids)
       this.ids.forEach((id) => {
-        this.spider.queue("https://indiankanoon.org/doc/"+id+"/", this.handleRequest);
+        this.spider.queue(
+          "https://indiankanoon.org/doc/" + id + "/",
+          this.handleRequest
+        );
       });
-    })
-  }
+    });
+  };
 }
 
 export { Crawler };

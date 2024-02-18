@@ -14,6 +14,7 @@ import {
   ConversationHeader,
   TypingIndicator,
 } from "@chatscope/chat-ui-kit-react";
+import Markdown from "react-markdown";
 
 import styles from "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
 import { useChannel } from "@ably-labs/react-hooks";
@@ -78,6 +79,7 @@ export default function Home() {
   useChannel(userId, (message) => {
     switch (message.data.event) {
       case "response":
+        console.log(message);
         setConversation((state) => updateChatbotMessage(state, message));
         break;
       case "status":
