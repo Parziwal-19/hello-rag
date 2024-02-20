@@ -10,7 +10,7 @@ const llm = new OpenAI({
   temperature: 0.9,
   openAIApiKey: "gaandMaraLe",
   configuration: {
-    baseURL: "http://localhost:1234/v1",
+    baseURL: process.env.LLM_API_BASE_ROUTE,
   },
 });
 const { summarizerTemplate, summarizerDocumentTemplate } = templates;

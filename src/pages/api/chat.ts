@@ -2,10 +2,14 @@
 import { Pinecone } from "@pinecone-database/pinecone";
 import * as Ably from "ably";
 import { CallbackManager } from "langchain/callbacks";
-import { LLMChain, loadSummarizationChain } from "langchain/chains";
+import {
+  LLMChain,
+  loadQARefineChain,
+  loadSummarizationChain,
+} from "langchain/chains";
 // import { ChatOpenAI } from "langchain/chat_models";
 import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddings/hf_transformers";
-import { OpenAI, ChatOpenAI } from "@langchain/openai";
+import { OpenAI, ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { PromptTemplate } from "@langchain/core/prompts";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { uuid } from "uuidv4";
@@ -15,7 +19,7 @@ import { ConversationLog } from "./conversationLog";
 import { Metadata, getMatchesFromEmbeddings } from "./embeddings";
 import { templates } from "./templates";
 import { formatDocumentsAsString } from "langchain/util/document";
-import { uniqBy } from "lodash";
+import { uniq, uniqBy } from "lodash";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import {
   RunnableMap,
@@ -24,16 +28,46 @@ import {
 } from "@langchain/core/runnables";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { PineconeStore } from "@langchain/pinecone";
+import { handleCleaningRequest } from "utils/cleanHtml";
 
 const TOP_K = 3;
+const namespace = process.env.NAMESPACE;
 
-const llm = new OpenAI({
-  temperature: 0.9,
-  openAIApiKey: "gaandMaraLe",
-  configuration: {
-    baseURL: "http://localhost:1234/v1",
-  },
-});
+const llm = process.env.USE_OPEN_AI
+  ? new OpenAI({
+      openAIApiKey: process.env.OPENAI_API_KEY,
+      modelName: "gpt-3.5-turbo-0125",
+    })
+  : new OpenAI({
+      openAIApiKey: "gaandMaraLe",
+      configuration: {
+        baseURL: process.env.LLM_API_BASE_ROUTE,
+      },
+    });
+
+const chatLlm = process.env.USE_OPEN_AI
+  ? new ChatOpenAI({
+      openAIApiKey: process.env.OPENAI_API_KEY,
+      modelName: "gpt-3.5-turbo-0125",
+    })
+  : new ChatOpenAI({
+      openAIApiKey: "gaandMaraLe",
+      configuration: {
+        baseURL: process.env.LLM_API_BASE_ROUTE,
+      },
+    });
+
+const USE_OPEN_AI_EMBEDDING = process.env.USE_OPEN_AI_EMBEDDING;
+
+const embeddings = USE_OPEN_AI_EMBEDDING
+  ? new OpenAIEmbeddings({
+      modelName: "text-embedding-ada-002",
+      openAIApiKey: process.env.OPENAI_API_KEY,
+    })
+  : new HuggingFaceTransformersEmbeddings({
+      modelName: "Xenova/bge-m3",
+    });
+
 let pinecone: Pinecone | null = null;
 
 // const initPineconeClient = async () => {
@@ -70,6 +104,7 @@ const handleRequest = async ({
     });
     console.log(conversationHistory);
 
+    //TODO: clear context if talking about a new judgement
     const formatChatHistory = (chatHistory: string[]) => {
       return chatHistory.join("\n");
     };
@@ -80,90 +115,111 @@ const handleRequest = async ({
 
     const pineconeIndex = pinecone!.Index(process.env.PINECONE_INDEX_NAME!);
 
-    const vectorStore = await PineconeStore.fromExistingIndex(
-      new HuggingFaceTransformersEmbeddings({
-        modelName: "Xenova/bge-m3",
-      }),
-      { pineconeIndex }
-    );
-
-    const retriever = vectorStore.asRetriever();
+    const vectorStore = await PineconeStore.fromExistingIndex(embeddings, {
+      pineconeIndex,
+      namespace: namespace,
+    });
 
     const CONDENSE_QUESTION_PROMPT = PromptTemplate.fromTemplate(
       templates.inquiryTemplate
     );
 
-    const chatLLMModel = new ChatOpenAI({
-      openAIApiKey: "gaandHiMaraLe",
-      configuration: {
-        baseURL: "http://localhost:1234/v1",
+    const standaloneQuestionChain = RunnableSequence.from([
+      {
+        userPrompt: (p) => prompt,
+        conversationHistory: () => formatChatHistory(conversationHistory),
       },
+      CONDENSE_QUESTION_PROMPT,
+      llm,
+      new StringOutputParser(),
+    ]);
+    const inquiry = await standaloneQuestionChain.invoke({ question: prompt });
+    // const inquiry =
+    //   "\n" +
+    //   "Question: Identify precedents where defenses or mitigating circumstances relating to unauthorized plot transfers have led to favorable outcomes in Delhi court jurisdiction.";
+
+    console.log({ inquiry });
+
+    // const retrievedDocuments = await vectorStore.similaritySearch(inquiry, 5);
+    const embeddingVectors = await embeddings.embedQuery(inquiry);
+    console.log(embeddingVectors);
+    const matches = await getMatchesFromEmbeddings(
+      embeddingVectors,
+      pinecone!,
+      TOP_K
+    );
+
+    console.log("retrievedDocuments");
+    console.log(JSON.stringify(matches));
+    const matchedDocumentIds =
+      matches &&
+      Array.from(
+        new Set(
+          matches.map((match) => {
+            const metadata = match.metadata as Metadata;
+            const { judgementId } = metadata;
+            return judgementId;
+          })
+        )
+      );
+    console.log({ matchedDocumentIds });
+    const documentsToBeSummarised = handleCleaningRequest(matchedDocumentIds);
+
+    const SUMMARY_PROMPT = new PromptTemplate({
+      inputVariables: ["text", "inquiry"],
+      template: templates.summarizerDocumentTemplate,
     });
-    // const standaloneQuestionChain = RunnableSequence.from([
-    //   {
-    //     userPrompt: (p) => prompt,
-    //     conversationHistory: () => formatChatHistory(conversationHistory),
-    //   },
-    //   CONDENSE_QUESTION_PROMPT,
-    //   llm,
-    //   new StringOutputParser(),
-    // ]);
 
+    const SUMMARY_REFINE_PROMPT = new PromptTemplate({
+      inputVariables: ["text", "inquiry", "existing_answer"],
+      template: templates.refineSummarizerDocumentTemplate,
+    });
+
+    const splitter = new RecursiveCharacterTextSplitter({
+      chunkSize: 2048,
+      chunkOverlap: 1,
+    });
+
+    const splitDocs = await splitter.createDocuments(
+      documentsToBeSummarised.map((t) => t.text)
+    );
+
+    console.log({ splitDocs });
+
+    const summarisationChain = loadSummarizationChain(llm, {
+      questionPrompt: SUMMARY_PROMPT,
+      refinePrompt: SUMMARY_REFINE_PROMPT,
+      type: "refine",
+      verbose: true,
+    });
+    console.log(summarisationChain);
+    console.log(
+      "summarising................................................................"
+    );
+    const summaries = await summarisationChain.invoke({
+      input_documents: splitDocs,
+      inquiry,
+    });
+
+    console.log({ summaries });
+    // const summaries = {
+    //   output_text:
+    //     "    The above text is a sample input text for testing the summarization of a given document into a summary. This input text has been generated using natural language generation (NLG) techniques and it contains the following content:   \\n\\n- Rent Control Act received assent from the President.\\n- The Supreme Court in Puwada Venkateswara Rao v C.V Ramana also held that Andhra Pradesh Buildings (Lease,Rent,Eviction) Control Act is a complete code dealing with the relationship of landlord and tenant in respect of buildings governed by that Act.\\n- The Supreme Court approved of the decision of this court in Uligappa v S.Mohan Rao (supra)\\n- An analysis of the Tamil Nadu Buildings (Lease,Rent & Eviction) Control Act would show that it provides a complete code for every contingency that is likely to arise in the relationship of landlord and tenant.\\n\\nThe Supreme Court held that Andhra Pradesh Buildings (Lease, Rent, Eviction) Control Act is a complete code dealing with the relationship of landlord and tenant in",
+    // };
     const ANSWER_PROMPT = PromptTemplate.fromTemplate(templates.qaTemplate);
-    // const SUMMARY_PROMPT = PromptTemplate.fromTemplate(
-    //   templates.summarizerDocumentTemplate
-    // );
-
-    // const SUMMARY_REFINE_PROMPT = PromptTemplate.fromTemplate(
-    //   templates.refineSummarizerDocumentTemplate
-    // );
-
-    // const summarizeChain = loadSummarizationChain(llm, {
-    //   type: "refine",
-    //   questionPrompt: SUMMARY_PROMPT,
-    //   refinePrompt: SUMMARY_REFINE_PROMPT,
-    // });
-    // const inquiry = await standaloneQuestionChain.invoke({ question: prompt });
-
-    // const retrievedDocuments = await retriever.invoke(inquiry);
-
-    // const documentsToBeSummarised = uniqBy(
-    //   retrievedDocuments,
-    //   (doc) => doc?.metadata?.url
-    // );
-
-    // const splitter = new RecursiveCharacterTextSplitter({
-    //   chunkSize: 2048,
-    //   chunkOverlap: 1,
-    // });
-
-    // const splitDocs = await splitter.splitDocuments(documentsToBeSummarised);
-
-    // console.log(splitDocs);
-
-    // const summaries = await summarizeChain.invoke({
-    //   input_documents: splitDocs,
-    // });
-
-    // console.log({ summaries });
-    const summaries = {
-      output_text:
-        "    The above text is a sample input text for testing the summarization of a given document into a summary. This input text has been generated using natural language generation (NLG) techniques and it contains the following content:   \\n\\n- Rent Control Act received assent from the President.\\n- The Supreme Court in Puwada Venkateswara Rao v C.V Ramana also held that Andhra Pradesh Buildings (Lease,Rent,Eviction) Control Act is a complete code dealing with the relationship of landlord and tenant in respect of buildings governed by that Act.\\n- The Supreme Court approved of the decision of this court in Uligappa v S.Mohan Rao (supra)\\n- An analysis of the Tamil Nadu Buildings (Lease,Rent & Eviction) Control Act would show that it provides a complete code for every contingency that is likely to arise in the relationship of landlord and tenant.\\n\\nThe Supreme Court held that Andhra Pradesh Buildings (Lease, Rent, Eviction) Control Act is a complete code dealing with the relationship of landlord and tenant in",
-    };
-
     const answerChain = RunnableSequence.from([
       {
         summaries: () => summaries.output_text,
         question: () => prompt,
       },
       ANSWER_PROMPT,
-      chatLLMModel,
+      chatLlm,
       new StringOutputParser(),
     ]);
 
     const result = await answerChain.invoke({});
 
-    console.log(result);
+    console.log({ result });
     try {
       channel.publish({
         data: {
@@ -182,115 +238,115 @@ const handleRequest = async ({
         message: "Finding matches...",
       },
     });
-    // const matches = await vectorStore.similaritySearch(prompt, 3);
-    // // const matches = await getMatchesFromEmbeddings(
-    // //   embeddings,
-    // //   pinecone!,
-    // //   TOP_K
-    // // );
-    // console.log(matches);
-    // console.log(matches.map((m) => m.score));
+    // // const matches = await vectorStore.similaritySearch(prompt, 3);
+    // // // const matches = await getMatchesFromEmbeddings(
+    // // //   embeddings,
+    // // //   pinecone!,
+    // // //   TOP_K
+    // // // );
+    // // console.log(matches);
+    // // console.log(matches.map((m) => m.score));
 
-    // const urls =
-    //   matches &&
-    //   Array.from(
-    //     new Set(
-    //       matches.map((match) => {
-    //         const metadata = match.metadata as Metadata;
-    //         const { url } = metadata;
-    //         return url;
-    //       })
-    //     )
-    //   );
+    // // const urls =
+    // //   matches &&
+    // //   Array.from(
+    // //     new Set(
+    // //       matches.map((match) => {
+    // //         const metadata = match.metadata as Metadata;
+    // //         const { url } = metadata;
+    // //         return url;
+    // //       })
+    // //     )
+    // //   );
 
-    // const docs =
-    //   matches &&
-    //   Array.from(
-    //     matches.reduce((map, match) => {
-    //       const metadata = match.metadata as Metadata;
-    //       const { text, url, court, title, citations, author, bench } =
-    //         metadata;
-    //       if (!map.has(url)) {
-    //         map.set(url, text);
-    //       }
-    //       return map;
-    //     }, new Map())
-    //   ).map(([_, text]) => text);
+    // // const docs =
+    // //   matches &&
+    // //   Array.from(
+    // //     matches.reduce((map, match) => {
+    // //       const metadata = match.metadata as Metadata;
+    // //       const { text, url, court, title, citations, author, bench } =
+    // //         metadata;
+    // //       if (!map.has(url)) {
+    // //         map.set(url, text);
+    // //       }
+    // //       return map;
+    // //     }, new Map())
+    // //   ).map(([_, text]) => text);
 
-    // const promptTemplate = new PromptTemplate({
-    //   template: templates.qaTemplate,
-    //   inputVariables: ["summaries", "question", "conversationHistory", "urls"],
-    // });
+    // // const promptTemplate = new PromptTemplate({
+    // //   template: templates.qaTemplate,
+    // //   inputVariables: ["summaries", "question", "conversationHistory", "urls"],
+    // // });
 
-    // console.log(docs);
-    // try {
-    //   const chat = new ChatOpenAI({
-    //     openAIApiKey: "gaandHiMaraLe",
-    //     configuration: {
-    //       baseURL: "http://localhost:1234/v1/chat",
-    //     },
-    //     // streaming: true,
-    //     // verbose: true,
-    //     // modelName: "gpt-3.5-turbo",
-    //     //   callbackManager: CallbackManager.fromHandlers({
-    //     //     async handleLLMNewToken(token) {
-    //     //       console.log(token);
+    // // console.log(docs);
+    // // try {
+    // //   const chat = new ChatOpenAI({
+    // //     openAIApiKey: "gaandHiMaraLe",
+    // //     configuration: {
+    // //       baseURL: "http://localhost:1234/v1/chat",
+    // //     },
+    // //     // streaming: true,
+    // //     // verbose: true,
+    // //     // modelName: "gpt-3.5-turbo",
+    // //     //   callbackManager: CallbackManager.fromHandlers({
+    // //     //     async handleLLMNewToken(token) {
+    // //     //       console.log(token);
 
-    //     //       channel.publish({
-    //     //         data: {
-    //     //           event: "response",
-    //     //           token: token,
-    //     //           interactionId,
-    //     //         },
-    //     //       });
-    //     //     },
-    //     //     async handleLLMEnd(result) {
-    //     //       channel.publish({
-    //     //         data: {
-    //     //           event: "responseEnd",
-    //     //           token: "END",
-    //     //           interactionId,
-    //     //         },
-    //     //       });
-    //     //     },
-    //     //   }),
-    //   });
+    // //     //       channel.publish({
+    // //     //         data: {
+    // //     //           event: "response",
+    // //     //           token: token,
+    // //     //           interactionId,
+    // //     //         },
+    // //     //       });
+    // //     //     },
+    // //     //     async handleLLMEnd(result) {
+    // //     //       channel.publish({
+    // //     //         data: {
+    // //     //           event: "responseEnd",
+    // //     //           token: "END",
+    // //     //           interactionId,
+    // //     //         },
+    // //     //       });
+    // //     //     },
+    // //     //   }),
+    // //   });
 
-    //   // const chain = new LLMChain({
-    //   //   prompt: promptTemplate,
-    //   //   llm: chat,
-    //   // });
+    // //   // const chain = new LLMChain({
+    // //   //   prompt: promptTemplate,
+    // //   //   llm: chat,
+    // //   // });
 
-    //   const allDocs = docs.join("\n");
-    //   console.log(allDocs.length);
-    //   if (allDocs.length > 4000) {
-    //     channel.publish({
-    //       data: {
-    //         event: "status",
-    //         message: `Just a second, forming final answer...`,
-    //       },
-    //     });
-    //   }
-    //   console.log("summarisingggg");
-    //   const summary =
-    //     allDocs.length > 4000
-    //       ? await summarizeLongDocument({ document: allDocs, inquiry })
-    //       : allDocs;
+    // //   const allDocs = docs.join("\n");
+    // //   console.log(allDocs.length);
+    // //   if (allDocs.length > 4000) {
+    // //     channel.publish({
+    // //       data: {
+    // //         event: "status",
+    // //         message: `Just a second, forming final answer...`,
+    // //       },
+    // //     });
+    // //   }
+    // //   console.log("summarisingggg");
+    // //   const summary =
+    // //     allDocs.length > 4000
+    // //       ? await summarizeLongDocument({ document: allDocs, inquiry })
+    // //       : allDocs;
 
-    //   // console.log(summary);
-    //   const outputParser = new StringOutputParser();
-    //   const setupAndRetrieval = RunnableSequence;
+    // //   // console.log(summary);
+    // //   const outputParser = new StringOutputParser();
+    // //   const setupAndRetrieval = RunnableSequence;
 
-    //   await chain.call({
-    //     summaries: allDocs,
-    //     question: prompt,
-    //     conversationHistory,
-    //     urls,
-    //   });
-    //   console.log(allDocs.length);
-    // } catch (e) {
-    //   console.log(e);
-    // }
+    // //   await chain.call({
+    // //     summaries: allDocs,
+    // //     question: prompt,
+    // //     conversationHistory,
+    // //     urls,
+    // //   });
+    // //   console.log(allDocs.length);
+    // // } catch (e) {
+    // //   console.log(e);
+    // // }
   } catch (error) {
     //@ts-ignore
     console.error(error);

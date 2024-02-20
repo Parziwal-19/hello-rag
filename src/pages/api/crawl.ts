@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from "next";
-import { PineconeClient, Vector } from "@pinecone-database/pinecone";
+import { Pinecone, Vector } from "@pinecone-database/pinecone";
 import { Crawler, Page } from "../../crawler";
 import { Document } from "langchain/document";
 
@@ -8,21 +8,25 @@ import Bottleneck from "bottleneck";
 import { uuid } from "uuidv4";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { summarizeLongDocument } from "./summarizer";
+import { OpenAIEmbeddings } from "@langchain/openai";
 
 const limiter = new Bottleneck({
   minTime: 50,
 });
+const USE_OPEN_AI_EMBEDDING = process.env.USE_OPEN_AI_EMBEDDING;
 
-let pinecone: PineconeClient | null = null;
+const namespace = process.env.NAMESPACE;
 
-const initPineconeClient = async () => {
-  pinecone = new PineconeClient();
-  console.log("init pinecone");
-  await pinecone.init({
-    environment: process.env.PINECONE_ENVIRONMENT!,
-    apiKey: process.env.PINECONE_API_KEY!,
-  });
-};
+const embedder = USE_OPEN_AI_EMBEDDING
+  ? new OpenAIEmbeddings({
+      modelName: "text-embedding-ada-002",
+      openAIApiKey: process.env.OPENAI_API_KEY,
+    })
+  : new HuggingFaceTransformersEmbeddings({
+      modelName: "Xenova/bge-m3",
+    });
+
+let pinecone: Pinecone | null = null;
 
 type Response = {
   message: string;
@@ -60,32 +64,25 @@ export default async function handler(
       (indexName as string) || process.env.PINECONE_INDEX_NAME!;
     const shouldSummarize = summmarize === "true";
 
-    if (!pinecone) {
-      await initPineconeClient();
-    }
-
-    const indexes = pinecone && (await pinecone.listIndexes());
-    if (!indexes?.includes(pineconeIndexName)) {
-      res.status(500).json({
-        message: `Index ${pineconeIndexName} does not exist`,
-      });
-      throw new Error(`Index ${pineconeIndexName} does not exist`);
-    }
+    pinecone = await new Pinecone({
+      apiKey: process.env.PINECONE_API_KEY!,
+    });
 
     const crawler = new Crawler(ids, crawlLimit, 200);
     const pages = (await crawler.start()) as Page[];
-
+    console.log({ pages });
     const documents = await Promise.all(
       pages.map(async (row) => {
         //TODO: @sid explire contextal chunk headers below
         const splitter = new RecursiveCharacterTextSplitter({
-          chunkSize: 1536,
-          chunkOverlap: 1,
+          chunkSize: 500,
+          chunkOverlap: 150,
         });
 
         // const pageContent = shouldSummarize
         //   ? await summarizeLongDocument({ document: row.text })
         //   : row.text;
+        console.log(row.text);
         const pageContent = row.text;
 
         const docs = splitter.splitDocuments([
@@ -98,24 +95,22 @@ export default async function handler(
               citations: row.citations,
               author: row.author,
               bench: row.bench,
-              // text: truncateStringByBytes(pageContent, 36000),
+              judgementId: row.id,
             },
           }),
         ]);
         return docs;
       })
     );
-    console.log(documents);
+    console.log(JSON.stringify(documents));
     const index = pinecone && pinecone.Index(pineconeIndexName);
 
-    const embedder = new HuggingFaceTransformersEmbeddings({
-      modelName: "Xenova/bge-m3",
-    });
     let counter = 0;
-    // res.status(200).json({ message: "Done" });
+
     // //Embed the documents
     const getEmbedding = async (doc: Document) => {
       console.log("gettttting embedding...");
+      //TODO: Should this be embedDocument and not embedQuery
       const embedding = await embedder.embedQuery(doc.pageContent);
       console.log(doc.pageContent);
       console.log("got embedding", embedding.length);
@@ -124,16 +119,16 @@ export default async function handler(
       );
       counter = counter + 1;
       return {
-        id: uuid(),
+        id: doc.metadata.judgementId + "#chunk" + counter,
         values: embedding,
         metadata: {
           chunk: doc.pageContent,
-          text: doc.metadata.text as string,
           url: doc.metadata.url as string,
           court: doc.metadata.court as string,
           title: doc.metadata.title as string,
           author: doc.metadata.author as string,
           bench: doc.metadata.bench as string,
+          judgementId: doc.metadata.judgementId,
         },
       } as Vector;
     };
@@ -153,12 +148,7 @@ export default async function handler(
       try {
         await Promise.all(
           chunks.map(async (chunk) => {
-            await index!.upsert({
-              upsertRequest: {
-                vectors: chunk as Vector[],
-                namespace: "",
-              },
-            });
+            await index!.namespace("openAI").upsert(chunk);
           })
         );
 

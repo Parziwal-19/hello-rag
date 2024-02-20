@@ -19,59 +19,70 @@ const templates = {
         QUESTION: {question}
 
         Final Answer: `,
-  summarizerTemplate: `Shorten the text in the CONTENT, attempting to answer the INQUIRY You should follow the following rules when generating the summary:
-    - Any code found in the CONTENT should ALWAYS be preserved in the summary, unchanged.
-    - Code will be surrounded by backticks (\`) or triple backticks (\`\`\`).
-    - Summary should include code examples that are relevant to the INQUIRY, based on the content. Do not make up any code examples on your own.
-    - The summary will answer the INQUIRY. If it cannot be answered, the summary should be empty, AND NO TEXT SHOULD BE RETURNED IN THE FINAL ANSWER AT ALL.
-    - If the INQUIRY cannot be answered, the final answer should be empty.
+  summarizerTemplate: `You are a legal expert who is adept at reading long court judgements and extracting the most important elements from it. Summarize the text in the CONTENT. You should follow the following rules when generating the summary:
+    - The summary must contain the court, judge, date and other such factual content.
+    - The summary must retain all important facts, major contentions, analysis of law, analysis of precents and conclusions.
+    - The summary must contain information from within the provided CONTENT, and nothing from your knwoledge outside of it. If this rule is not followed, a kitten will get killed.
     - The summary should be under 4000 characters.
-    - The summary should be 2000 characters long, if possible.
+    - The summary should be at least 1500 characters long, if possible.
 
-    INQUIRY: {inquiry}
     CONTENT: {document}
 
     Final answer:
     `,
-  summarizerDocumentTemplate: `Summarize the text in the CONTENT. You should follow the following rules when generating the summary:
-    - Any code found in the CONTENT should ALWAYS be preserved in the summary, unchanged.
-    - Code will be surrounded by backticks (\`) or triple backticks (\`\`\`).
-    - Summary should include code examples when possible. Do not make up any code examples on your own.
+  summarizerDocumentTemplate: `You are a legal expert who is adept at reading long court judgements and extracting the most important elements from it. You are provided with the CONTENT which contains a relevant judgement for a user inquiry defined as INQUIRY. Summarize the text in the CONTENT. You should follow the following rules when generating the summary:
+    - The summary must contain the court, judge, date and other such factual content.
+    - The summary must retain all important facts, major contentions, analysis of law, analysis of precents and conclusions.
+    - The summary must contain information from within the provided CONTENT, and nothing from your knwoledge outside of it. If this rule is not followed, a kitten will get killed.
     - The summary should be under 4000 characters.
     - The summary should be at least 1500 characters long, if possible.
+    - The summary must consider relevant information for answering the INQUIRY
 
     CONTENT: {text}
+    INQUIRY: {inquiry}
 
     Final answer:
     `,
-  refineSummarizerDocumentTemplate: `Summarize the text in the CONTENT. You should follow the following rules when generating the summary:
-    - Any code found in the CONTENT should ALWAYS be preserved in the summary, unchanged.
-    - Code will be surrounded by backticks (\`) or triple backticks (\`\`\`).
-    - Summary should include code examples when possible. Do not make up any code examples on your own.
+  refineSummarizerDocumentTemplate: `You are a legal expert who is adept at reading long court judgements and extracting the most important elements from it. You are provided with the CONTENT which contains a relevant judgement for a user inquiry defined as INQUIRY. Summarize the text in the CONTENT. You should follow the following rules when generating the summary:
+    - The summary must contain the court, judge, date and other such factual content.
+    - The summary must retain all important facts, major contentions, analysis of law, analysis of precents and conclusions.
+    - The summary must contain information from within the provided CONTENT, and nothing from your knwoledge outside of it. If this rule is not followed, a kitten will get killed.
     - The summary should be under 4000 characters.
     - The summary should be at least 1500 characters long, if possible.
-We have provided an existing summary up to a certain point: {existing_answer}
+    - The summary must consider relevant information for answering the INQUIRY
+    
+    We have provided an existing summary up to a certain point: {existing_answer}
+
 
     CONTENT: {text}
+    INQUIRY: {inquiry}
 
+    
     Final answer:
     `,
-  inquiryTemplate: `Given the following user prompt and conversation log, formulate a question that would be the most relevant to provide the user with an answer from a knowledge base.
-    You should follow the following rules when generating and answer:
-    - Always prioritize the user prompt over the conversation log.
-    - Ignore any conversation log that is not directly related to the user prompt.
-    - Only attempt to answer if a question was posed.
-    - The question should be a single sentence
-    - You should remove any punctuation from the question
-    - You should remove any words that are not relevant to the question
-    - If you are unable to formulate a question, respond with the same USER PROMPT you got.
+  inquiryTemplate: `Context: You are a distinguished legal expert specializing in Indian case law, possessing an unmatched ability to sift through precedents and apply them to new legal challenges. A lawyer seeks your guidance to identify relevant past judgments that could impact their client's standing in a current case. Your task is to distill crucial legal details from the case information provided, which may encompass elements like the legal subject, client specifics, factual background, nature of the dispute, relevant legal sections, and jurisdictional context.
 
-    USER PROMPT: {userPrompt}
+      Objective: Leverage your expertise to craft a meticulously formulated question aimed at uncovering the most pertinent precedents within a comprehensive database of Indian court judgments. The relevance of precedents hinges on similarities in core contentions, legal sections discussed, court, or presiding judge. Precedents are deemed supportive if they ruled in favor of positions analogous to the lawyer's client and adverse if they concluded otherwise. Your query should be engineered to retrieve judgments encompassing vital details such as the judgment's conclusion, pivotal facts influencing the outcome, significant but not decisive facts, the judge, court, and judgment date.
 
-    CONVERSATION LOG: {conversationHistory}
+      Guidelines for Query Formulation:
 
-    Final answer:
-    `,
+      - Do not make up any facts. Only use the facts that are provided in the user prompt
+      - Prioritize direct information from the lawyer's inquiry over any supplementary CHAT_HISTORY, focusing solely on content that contributes to understanding the case's legal framework.
+      - Disregard unrelated CHAT_HISTORY.
+      - Ensure the question is concise and formulated as a single sentence, stripped of punctuation and extraneous words, to facilitate clarity and precision in the search process.
+      - If a clear question cannot be derived, default to presenting the original user prompt for further clarification.
+      
+      Example: Given the USER_PROMPT: "My client is accused of breaching a contract due to late delivery of services, under the jurisdiction of Mumbai High Court," a well-formulated question could be: "Identify Mumbai High Court judgments on service delivery breaches in contracts, focusing on penalties and resolutions."
+
+      Final Task: Given the USER_PROMPT and the CHAT_HISTORY, synthesize a question that aligns closely with the outlined objectives and guidelines, optimizing for relevance in the context of the knowledge base of past court judgments.
+
+      USER_PROMPT: {userPrompt}
+
+      CHAT_HISTORY:{conversationHistory}
+
+    Provide only the refined question here and no other information:
+  `,
+
   summerierTemplate: `Summarize the following text. You should follow the following rules when generating and answer:`,
 };
 

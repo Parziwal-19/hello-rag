@@ -1,4 +1,4 @@
-import { PineconeClient, ScoredVector } from "@pinecone-database/pinecone";
+import { Pinecone } from "@pinecone-database/pinecone";
 
 export type Metadata = {
   url: string;
@@ -8,23 +8,23 @@ export type Metadata = {
   citations: string;
   author: string;
   bench: string;
+  judgementId: string;
 };
 
 export const getMatchesFromEmbeddings = async (
   embeddings: number[],
-  pinecone: PineconeClient,
+  pinecone: Pinecone,
   topK: number
 ): Promise<ScoredVector[]> => {
-  const index = pinecone!.Index(process.env.PINECONE_INDEX_NAME!);
+  const index = pinecone.Index(process.env.PINECONE_INDEX_NAME!);
   const queryRequest = {
     vector: embeddings,
     topK,
     includeMetadata: true,
   };
   try {
-    const queryResult = await index.query({
-      queryRequest,
-    });
+    const queryResult = await index.namespace("openAI").query(queryRequest);
+    console.log(queryResult);
     return (
       queryResult.matches?.map((match) => ({
         ...match,

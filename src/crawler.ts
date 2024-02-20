@@ -6,7 +6,7 @@ import * as cheerio from "cheerio";
 import parse from "url-parse";
 import { join } from "path";
 const turndownService = new TurndownService();
-
+import { writeFileSync } from "fs";
 export type Page = {
   url: string;
   text: string;
@@ -15,9 +15,11 @@ export type Page = {
   citations: string;
   author: string;
   bench: string;
+  id: string;
 };
 class Crawler {
   pages: Page[] = [];
+  parsedPages: Page[] = [];
   limit: number = 1000;
   ids: string[] = [];
   spider: Spider | null = {};
@@ -36,8 +38,50 @@ class Crawler {
     this.count = 0;
     this.pages = [];
     this.spider = {};
+    this.parsedPages = [];
   }
+  cleanHTMLString = (htmlString: any, id: string) => {
+    const $ = cheerio.load(htmlString);
+    $("script").remove();
+    $("#hub-sidebar").remove();
+    $("header").remove();
+    $("nav").remove();
+    $("img").remove();
+    const title = $("title").text() || $(".article-title").text();
+    //const html = $("body").html();
+    const court = $(".judgments .docsource_main").text();
+    //const title = $('.judgments .doc_title').text();
+    const citations = $(".judgments .doc_citations").text();
+    const author = $(".judgments .doc_author").text();
+    const bench = $(".judgments .doc_bench").text();
+    const content = $(".judgments").text();
 
+    const text = turndownService.turndown(content);
+    const page: Page = {
+      url: "https://indiankanoon.org/doc/" + id + "/",
+      text,
+      title,
+      court,
+      citations,
+      author,
+      bench,
+      id,
+    };
+    if (text.length > this.textLengthMinimum) {
+      this.parsedPages.push(page);
+    }
+  };
+  handleCleaningRequest = (ids: string[]) => {
+    const fs = require("fs");
+    const path = require("path");
+    const documentsDir = path.resolve("./public/documents");
+    const documentStrings = ids.map((id) => {
+      const filePath = path.join(documentsDir, `${id}.html`);
+      const htmlString = fs.readFileSync(filePath, "utf8");
+      return this.cleanHTMLString(htmlString, id);
+    });
+    return documentStrings;
+  };
   handleRequest = (doc: any) => {
     const $ = cheerio.load(doc.res.body);
     $("script").remove();
@@ -56,15 +100,24 @@ class Crawler {
 
     const htmlContent = doc.res.body;
     const idForRun = doc.url.split("/")[4];
-    const filePath = join(
-      "/Users/ishanjoglekar/Documents/GitHub/illegal-chats/",
-      "public",
-      "original_htmls",
-      `${idForRun}.html`
-    );
+    const path = require("path");
+
+    const fs = require("fs");
+
+    const documentsDir = path.resolve("./public/documents");
+
+    // Create the documents directory if it doesn't exist
+    if (!fs.existsSync(documentsDir)) {
+      fs.mkdirSync(documentsDir);
+    }
+
+    // Construct the path to save the document
+    const filePath = path.join(documentsDir, `${idForRun}.html`);
+
+    // Write the document data to the file
 
     try {
-      writeFileSync(filePath, htmlContent);
+      fs.writeFileSync(filePath, htmlContent);
       console.log(`HTML content saved for ID: ${idForRun}`);
     } catch (error) {
       console.error(`Failed to save HTML content for ID: ${idForRun}`, error);
@@ -80,6 +133,7 @@ class Crawler {
       citations,
       author,
       bench,
+      id: idForRun,
     };
     if (text.length > this.textLengthMinimum) {
       this.pages.push(page);
