@@ -23,7 +23,7 @@ export const getMatchesFromEmbeddings = async (
     includeMetadata: true,
   };
   try {
-    const queryResult = await index.namespace("openAI").query(queryRequest);
+    const queryResult = await index.query(queryRequest);
     console.log(queryResult);
     return (
       queryResult.matches?.map((match) => ({

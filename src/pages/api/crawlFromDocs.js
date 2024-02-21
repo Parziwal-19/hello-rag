@@ -102,13 +102,15 @@ const splitAndEmbedDoc = async (doc, rateLimitedGetEmbedding, fileName) => {
     fs.appendFileSync("./largeDocIds.txt", doc.id + "\n");
     return [];
   }
-  return chunksForDoc.map((chunk, index) =>
-    rateLimitedGetEmbedding(chunk, index, doc.id, fileName)
+  return chunksForDoc.map(
+    (chunk, index) => chunk
+    // rateLimitedGetEmbedding(chunk, index, doc.id, fileName)
   );
   // why not write the output of this call to a file
 };
 
 const splitAndEmbedDocs = async (docs, rateLimitedGetEmbedding, fileName) => {
+  console.log("splitting" + docs.length);
   const embeddingPromises = docs.map((doc) =>
     splitAndEmbedDoc(doc, rateLimitedGetEmbedding, fileName)
   );
@@ -158,10 +160,12 @@ export default async function handler(
     pinecone = await new Pinecone({
       apiKey: process.env.PINECONE_API_KEY!,
     });
-
+    console.log(ids.length);
     const crawler = new Crawler(ids, crawlLimit, 200);
-    const pages = (await crawler.start()) as Page[];
-
+    var pages = await crawler.handleCleaningRequest(ids);
+    pages = crawler.parsedPages;
+    
+    
     const rateLimitedGetEmbedding = limiter.wrap(getEmbeddingForDoc);
 
     const embeddingsForDocuments = await splitAndEmbedDocs(
@@ -169,19 +173,20 @@ export default async function handler(
       rateLimitedGetEmbedding,
       `embeddingsAppended${new Date().toISOString()}.json`
     );
-    console.log(flattenDeep(embeddingsForDocuments));
-    var vectorEmbeddings = await Promise.all(
-      flattenDeep(embeddingsForDocuments)
-    );
-    vectorEmbeddings = vectorEmbeddings.filter((v) => !isEmpty(v));
-    console.log("Done Embeddings: " + vectorEmbeddings.length);
+    const numberOfChunks = flattenDeep(embeddingsForDocuments);
+    console.log(numberOfChunks.length);
+    // var vectorEmbeddings = await Promise.all(
+    //   flattenDeep(embeddingsForDocuments)
+    // );
+    // vectorEmbeddings = vectorEmbeddings.filter((v) => !isEmpty(v));
+    // console.log("Done Embeddings: " + vectorEmbeddings.length);
 
     // fs.writeFileSync(
     //   `embedding${new Date().toISOString()}.json`,
     //   JSON.stringify(vectorEmbeddings)
     // );
 
-    await upsertVectors(vectorEmbeddings, pinecone);
+    // await upsertVectors(vectorEmbeddings, pinecone);
     res.status(200).json({ message: "Done" });
   } catch (e) {
     console.log(e);

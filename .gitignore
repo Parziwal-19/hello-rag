@@ -37,3 +37,6 @@ next-env.d.ts
 .env
 
 ./src/development-pinecone.json
+*.html
+oldEmbeddingLogs
+*.html

@@ -25,6 +25,7 @@ class Crawler {
   spider: Spider | null = {};
   count: number = 0;
   textLengthMinimum: number = 200;
+  skippedPages: number;
 
   constructor(
     ids: string[],
@@ -39,6 +40,7 @@ class Crawler {
     this.pages = [];
     this.spider = {};
     this.parsedPages = [];
+    this.skippedPages = 0;
   }
   cleanHTMLString = (htmlString: any, id: string) => {
     const $ = cheerio.load(htmlString);
@@ -47,6 +49,7 @@ class Crawler {
     $("header").remove();
     $("nav").remove();
     $("img").remove();
+    $("hidden_text").remove();
     const title = $("title").text() || $(".article-title").text();
     //const html = $("body").html();
     const court = $(".judgments .docsource_main").text();
@@ -69,6 +72,9 @@ class Crawler {
     };
     if (text.length > this.textLengthMinimum) {
       this.parsedPages.push(page);
+    } else {
+      this.skippedPages++;
+      console.log("skipping ", "https://indiankanoon.org/doc/" + id + "/");
     }
   };
   handleCleaningRequest = (ids: string[]) => {
@@ -89,6 +95,7 @@ class Crawler {
     $("header").remove();
     $("nav").remove();
     $("img").remove();
+    $("hidden_text").remove();
     const title = $("title").text() || $(".article-title").text();
     //const html = $("body").html();
     const court = $(".judgments .docsource_main").text();
@@ -160,7 +167,7 @@ class Crawler {
     return new Promise((resolve, reject) => {
       this.spider = new Spider({
         concurrent: 5,
-        delay: 0,
+        delay: 10,
         allowDuplicates: false,
         catchErrors: true,
         addReferrer: false,

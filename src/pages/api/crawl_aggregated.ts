@@ -16,9 +16,8 @@ import fs from "fs";
 const MAX_CHUNK_SIZE = 100;
 
 const limiter = new Bottleneck({
-  minTime: 25,
+  minTime: 30,
 });
-
 const USE_OPEN_AI_EMBEDDING = process.env.USE_OPEN_AI_EMBEDDING === "true";
 
 const namespace = process.env.NAMESPACE;
@@ -68,7 +67,7 @@ const getEmbeddingForDoc = async (
   return vector;
 };
 
-const splitDoc = (doc) => {
+const splitDoc = async (doc) => {
   console.log("splitting doc" + doc.id);
   //TODO: @sid explire contextal chunk headers below
   const splitter = new RecursiveCharacterTextSplitter({
@@ -78,7 +77,7 @@ const splitDoc = (doc) => {
 
   const pageContent = doc.text;
 
-  return splitter.splitDocuments([
+  var chunks = await splitter.splitDocuments([
     new Document({
       pageContent,
       metadata: {
@@ -92,30 +91,32 @@ const splitDoc = (doc) => {
       },
     }),
   ]);
+
+  return chunks.map((chunk, i) => ({ document: chunk, index: i, id: doc.id }));
 };
 
-const splitAndEmbedDoc = async (doc, rateLimitedGetEmbedding, fileName) => {
-  console.log("getting Embedding for doc" + doc.id);
-  const chunksForDoc = await splitDoc(doc);
-  if (chunksForDoc.length > MAX_CHUNK_SIZE) {
-    console.log("too many chunks for doc" + doc.id);
-    fs.appendFileSync("./largeDocIds.txt", doc.id + "\n");
-    return [];
-  }
-  return chunksForDoc.map((chunk, index) =>
-    rateLimitedGetEmbedding(chunk, index, doc.id, fileName)
-  );
-  // why not write the output of this call to a file
-};
+// const splitAndEmbedDoc = async (doc, rateLimitedGetEmbedding, fileName) => {
+//   console.log("getting Embedding for doc" + doc.id);
+//   const chunksForDoc = await splitDoc(doc);
+//   if (chunksForDoc.length > MAX_CHUNK_SIZE) {
+//     console.log("too many chunks for doc" + doc.id);
+//     fs.appendFileSync("./largeDocIds.txt", doc.id + "\n");
+//     return [];
+//   }
+//   return chunksForDoc.map((chunk, index) =>
+//     rateLimitedGetEmbedding(chunk, index, doc.id, fileName)
+//   );
+//   // why not write the output of this call to a file
+// };
 
-const splitAndEmbedDocs = async (docs, rateLimitedGetEmbedding, fileName) => {
-  const embeddingPromises = docs.map((doc) =>
-    splitAndEmbedDoc(doc, rateLimitedGetEmbedding, fileName)
-  );
+// const splitAndEmbedDocs = async (docs, rateLimitedGetEmbedding, fileName) => {
+//   const embeddingPromises = docs.map((doc) =>
+//     splitAndEmbedDoc(doc, rateLimitedGetEmbedding, fileName)
+//   );
 
-  const embeddings = await Promise.all(embeddingPromises);
-  return embeddings;
-};
+//   const embeddings = await Promise.all(embeddingPromises);
+//   return embeddings;
+// };
 
 const upsertVectors = async (chunks, Pinecone) => {
   const vectorChunks = chunk(chunks, CHUNK_SIZE);
@@ -127,7 +128,7 @@ const upsertVectors = async (chunks, Pinecone) => {
 
     await Promise.all(
       vectorChunks.map(async (chunk) => {
-        await index!.upsert(chunk);
+        await index!.namespace(namespace).upsert(chunk);
       })
     );
   } catch (e) {
@@ -147,9 +148,7 @@ export default async function handler(
 
     const { query } = req;
     const { arrayID, limit, indexName, summmarize } = query;
-    // const fs = require('fs');
-    const ids = JSON.parse(fs.readFileSync("idsToProcess.json", "utf8"));
-    // const ids = typeof arrayID === "string" ? JSON.parse(arrayID) : arrayID;
+    const ids = typeof arrayID === "string" ? JSON.parse(arrayID) : arrayID;
     console.log(ids);
     const crawlLimit = parseInt(limit as string) || 100;
 
@@ -164,12 +163,27 @@ export default async function handler(
 
     const rateLimitedGetEmbedding = limiter.wrap(getEmbeddingForDoc);
 
-    const embeddingsForDocuments = await splitAndEmbedDocs(
-      pages,
-      rateLimitedGetEmbedding,
-      `embeddingsAppended${new Date().toISOString()}.json`
+    const splitDocs = (await Promise.all(pages.map(splitDoc))).flat();
+    console.log(splitDocs.length);
+    const embeddingsForDocuments = await Promise.all(
+      splitDocs
+        .flat()
+        .map(({ document, index, id }) =>
+          rateLimitedGetEmbedding(
+            document,
+            index,
+            id,
+            `embeddingsAppended${new Date().toISOString()}.json`
+          )
+        )
     );
-    console.log(flattenDeep(embeddingsForDocuments));
+
+    // const embeddingsForDocuments = await splitAndEmbedDocs(
+    //   pages,
+    //   rateLimitedGetEmbedding,
+    //   `embeddingsAppended${new Date().toISOString()}.json`
+    // );
+    // console.log(embeddingsForDocuments);
     var vectorEmbeddings = await Promise.all(
       flattenDeep(embeddingsForDocuments)
     );
@@ -181,7 +195,7 @@ export default async function handler(
     //   JSON.stringify(vectorEmbeddings)
     // );
 
-    await upsertVectors(vectorEmbeddings, pinecone);
+    // await upsertVectors(vectorEmbeddings, pinecone);
     res.status(200).json({ message: "Done" });
   } catch (e) {
     console.log(e);

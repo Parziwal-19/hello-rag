@@ -16,9 +16,8 @@ import fs from "fs";
 const MAX_CHUNK_SIZE = 100;
 
 const limiter = new Bottleneck({
-  minTime: 25,
+  minTime: 30,
 });
-
 const USE_OPEN_AI_EMBEDDING = process.env.USE_OPEN_AI_EMBEDDING === "true";
 
 const namespace = process.env.NAMESPACE;
@@ -127,7 +126,7 @@ const upsertVectors = async (chunks, Pinecone) => {
 
     await Promise.all(
       vectorChunks.map(async (chunk) => {
-        await index!.upsert(chunk);
+        await index!.namespace(namespace).upsert(chunk);
       })
     );
   } catch (e) {
@@ -147,9 +146,7 @@ export default async function handler(
 
     const { query } = req;
     const { arrayID, limit, indexName, summmarize } = query;
-    // const fs = require('fs');
-    const ids = JSON.parse(fs.readFileSync("idsToProcess.json", "utf8"));
-    // const ids = typeof arrayID === "string" ? JSON.parse(arrayID) : arrayID;
+    const ids = typeof arrayID === "string" ? JSON.parse(arrayID) : arrayID;
     console.log(ids);
     const crawlLimit = parseInt(limit as string) || 100;
 
@@ -181,7 +178,7 @@ export default async function handler(
     //   JSON.stringify(vectorEmbeddings)
     // );
 
-    await upsertVectors(vectorEmbeddings, pinecone);
+    // await upsertVectors(vectorEmbeddings, pinecone);
     res.status(200).json({ message: "Done" });
   } catch (e) {
     console.log(e);

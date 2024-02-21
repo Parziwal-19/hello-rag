@@ -12,6 +12,7 @@ import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddin
 import { OpenAI, ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { PromptTemplate } from "@langchain/core/prompts";
 import type { NextApiRequest, NextApiResponse } from "next";
+
 import { uuid } from "uuidv4";
 import { summarizeLongDocument } from "./summarizer";
 
@@ -30,38 +31,42 @@ import { StringOutputParser } from "@langchain/core/output_parsers";
 import { PineconeStore } from "@langchain/pinecone";
 import { handleCleaningRequest } from "utils/cleanHtml";
 
-const TOP_K = 3;
+const TOP_K = 5;
 const namespace = process.env.NAMESPACE;
 
-const llm = process.env.USE_OPEN_AI
-  ? new OpenAI({
-      openAIApiKey: process.env.OPENAI_API_KEY,
-      modelName: "gpt-3.5-turbo-0125",
-    })
-  : new OpenAI({
-      openAIApiKey: "gaandMaraLe",
-      configuration: {
-        baseURL: process.env.LLM_API_BASE_ROUTE,
-      },
-    });
+const llm =
+  process.env.USE_OPEN_AI === "true"
+    ? new OpenAI({
+        openAIApiKey: process.env.OPENAI_API_KEY,
+        modelName: "gpt-3.5-turbo-0125",
+      })
+    : new OpenAI({
+        openAIApiKey: "7rxSQ5eO82L2VokihrBQX3vxY4wSKqwX",
+        configuration: {
+          baseURL: "https://api.deepinfra.com/v1/openai",
+        },
+        modelName: "meta-llama/Llama-2-70b-chat-hf",
+      });
 
-const chatLlm = process.env.USE_OPEN_AI
-  ? new ChatOpenAI({
-      openAIApiKey: process.env.OPENAI_API_KEY,
-      modelName: "gpt-3.5-turbo-0125",
-    })
-  : new ChatOpenAI({
-      openAIApiKey: "gaandMaraLe",
-      configuration: {
-        baseURL: process.env.LLM_API_BASE_ROUTE,
-      },
-    });
+const chatLlm =
+  process.env.USE_OPEN_AI === "true"
+    ? new ChatOpenAI({
+        openAIApiKey: process.env.OPENAI_API_KEY,
+        modelName: "gpt-3.5-turbo-0125",
+      })
+    : new ChatOpenAI({
+        openAIApiKey: "7rxSQ5eO82L2VokihrBQX3vxY4wSKqwX",
+        modelName: "meta-llama/Llama-2-70b-chat-hf",
+        configuration: {
+          baseURL: "https://api.deepinfra.com/v1/openai",
+        },
+      });
 
-const USE_OPEN_AI_EMBEDDING = process.env.USE_OPEN_AI_EMBEDDING;
+const USE_OPEN_AI_EMBEDDING = process.env.USE_OPEN_AI_EMBEDDING === "true";
 
 const embeddings = USE_OPEN_AI_EMBEDDING
   ? new OpenAIEmbeddings({
-      modelName: "text-embedding-ada-002",
+      modelName: process.env.OPEN_AI_EMBEDDING_MODEL,
       openAIApiKey: process.env.OPENAI_API_KEY,
     })
   : new HuggingFaceTransformersEmbeddings({
@@ -109,8 +114,6 @@ const handleRequest = async ({
       return chatHistory.join("\n");
     };
 
-    console.log(formatChatHistory);
-
     await conversationLog.addEntry({ entry: prompt, speaker: "user" });
 
     const pineconeIndex = pinecone!.Index(process.env.PINECONE_INDEX_NAME!);
@@ -130,7 +133,7 @@ const handleRequest = async ({
         conversationHistory: () => formatChatHistory(conversationHistory),
       },
       CONDENSE_QUESTION_PROMPT,
-      llm,
+      chatLlm,
       new StringOutputParser(),
     ]);
     const inquiry = await standaloneQuestionChain.invoke({ question: prompt });
@@ -184,15 +187,12 @@ const handleRequest = async ({
       documentsToBeSummarised.map((t) => t.text)
     );
 
-    console.log({ splitDocs });
-
-    const summarisationChain = loadSummarizationChain(llm, {
+    const summarisationChain = loadSummarizationChain(chatLlm, {
       questionPrompt: SUMMARY_PROMPT,
       refinePrompt: SUMMARY_REFINE_PROMPT,
       type: "refine",
-      verbose: true,
+      verbose: false,
     });
-    console.log(summarisationChain);
     console.log(
       "summarising................................................................"
     );
