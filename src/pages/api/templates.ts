@@ -19,46 +19,83 @@ const templates = {
         QUESTION: {question}
 
         Final Answer: `,
-  summarizerTemplate: `You are a legal expert who is adept at reading long court judgements and extracting the most important elements from it. Summarize the text in the CONTENT. You should follow the following rules when generating the summary:
-    - The summary must contain the court, judge, date and other such factual content.
-    - The summary must retain all important facts, major contentions, analysis of law, analysis of precents and conclusions.
-    - The summary must contain information from within the provided CONTENT, and nothing from your knwoledge outside of it. If this rule is not followed, a kitten will get killed.
-    - The summary should be under 4000 characters.
-    - The summary should be at least 1500 characters long, if possible.
+  summarizerTemplate: `You are a legal expert adept at reading court judgements and extracting the most important elements from it. You are provided with CONTENT, which is a part of a judgement. Your objective is to summarize the text in the CONTENT. You must follow the following rules when generating the summary:
+      - The summary must retain all important facts, evidence, major contentions, analysis of law, analysis of precedents and conclusions.
+      - The summary must contain information from within the provided CONTENT, and nothing from your knwoledge outside of it. Do not surf the web. If this rule is not followed, a kitten will get killed, and you will be blamed for it.
+      - The summary should be under 4000 characters.
+      - The summary should be at least 500 characters long, if possible.
 
-    CONTENT: {document}
+      CONTENT: {context}
 
-    Final answer:
-    `,
-  summarizerDocumentTemplate: `You are a legal expert who is adept at reading long court judgements and extracting the most important elements from it. You are provided with the CONTENT which contains a relevant judgement for a user inquiry defined as INQUIRY. Summarize the text in the CONTENT. You should follow the following rules when generating the summary:
-    - The summary must contain the court, judge, date and other such factual content.
-    - The summary must retain all important facts, major contentions, analysis of law, analysis of precents and conclusions.
-    - The summary must contain information from within the provided CONTENT, and nothing from your knwoledge outside of it. If this rule is not followed, a kitten will get killed.
-    - The summary should be under 4000 characters.
-    - The summary should be at least 1500 characters long, if possible.
-    - The summary must consider relevant information for answering the INQUIRY
+      Final answer:
+`,
+  summarizerDocumentTemplate: `You are a legal expert who is adept at understanding existing court judgements and applying it to new cases. You are provided with a user inquiry defined as INQUIRY which contains details of the new case, CONTENT which contains a part of an existing judgement that is relevant to the new case and JUDGEMENT_DETAILS which contains metadata about the judgement. Your goal is to output how the existing judgement applies to the new case. You should follow the following rules when generating the summary:
+    - The output must contain the court, judge, date and other such factual content.
+    - The output must retain all important facts, major contentions, analysis of law, analysis of precents and conclusions.
+    - The output must contain information from within the provided CONTENT, and nothing from your knwoledge outside of it. If this rule is not followed, a kitten will get killed.
+    - If you do not find anything relevant to the INQUIRY in the CONTENT, you should output "I could not find anything relevant to the INQUIRY in the provided CONTENT"
+    - The output should be under 4000 characters.
+    - The output must consider relevant information for answering the INQUIRY.
+    - The output should reference the URL of the judgement, which is present in JUDEGEMENT_DETAILS.
+    - Your response should only be OUTPUT
+
+    Here is an example --------
+
+    INQUIRY: What are some precedences of cases where a tenant was excused for not paying rent for 3 months?
+    CONTENT:It was argued before this court that the respondent has never paid any rent to the petitioner and therefore, he is not tenant of the petitioner. I have already reached the conclusion that either as an attorney holder of Mehmooda Begum or on his own account, petitioner is entitled to possess the property in question and also seek eviction.
+    JUDEGMENT_DETAILS: 
+      "author": "Author: Manmeet Pritam Singh Arora",
+      "bench": "Bench: Manmeet Pritam Singh Arora",
+      "court": "Delhi High Court",
+      "judgementId": "90099718",
+      "title": "Mohd Salim vs Mohd Nabi on 7 December, 2022",
+      "url": "https://indiankanoon.org/doc/90099718/"
+    
+    OUTPUT:In the Delhi High Court case of Mohd Salim vs Mohd Nabi on 7 December, 2022, presided by judge Manmeet Pritam Singh Arora, the court held that a tenant can be evicted by the landlord or the attorney holder if the tenant has never paid any rent.
+    
+    ------------------
 
     CONTENT: {text}
     INQUIRY: {inquiry}
+    JUDGEMENT_DETAILS: {judgementDetails}
 
-    Final answer:
+    OUTPUT:
     `,
-  refineSummarizerDocumentTemplate: `You are a legal expert who is adept at reading long court judgements and extracting the most important elements from it. You are provided with the CONTENT which contains a relevant judgement for a user inquiry defined as INQUIRY. Summarize the text in the CONTENT. You should follow the following rules when generating the summary:
-    - The summary must contain the court, judge, date and other such factual content.
-    - The summary must retain all important facts, major contentions, analysis of law, analysis of precents and conclusions.
-    - The summary must contain information from within the provided CONTENT, and nothing from your knwoledge outside of it. If this rule is not followed, a kitten will get killed.
-    - The summary should be under 4000 characters.
-    - The summary should be at least 1500 characters long, if possible.
-    - The summary must consider relevant information for answering the INQUIRY
+  refineSummarizerDocumentTemplate: `You are a legal expert who is adept at understanding existing court judgements and applying it to new cases. You are provided with a user inquiry defined as INQUIRY which contains details of the new case, CONTENT which contains a part of an existing judgement that is relevant to the new case and JUDGEMENT_DETAILS which contains metadata about the judgement. Your goal is to output how the existing judgement applies to the new case. You should follow the following rules when generating the summary:
+    - The output must contain the court, judge, date and other such factual content.
+    - The output must retain all important facts, major contentions, analysis of law, analysis of precents and conclusions.
+    - The output must contain information from within the provided CONTENT, and nothing from your knwoledge outside of it. If this rule is not followed, a kitten will get killed.
+    - If you do not find anything relevant to the INQUIRY in the CONTENT, you should output "I could not find anything relevant to the INQUIRY in the provided CONTENT"
+    - The output should be under 4000 characters.
+    - The output must consider relevant information for answering the INQUIRY.
+    - The output should reference the URL of the judgement, which is present in JUDEGEMENT_DETAILS.
+    - Your response should only be OUTPUT
+
+
+    Here is an example --------
+
+    INQUIRY: What are some precedences of cases where a tenant was excused for not paying rent for 3 months?
+    CONTENT:It was argued before this court that the respondent has never paid any rent to the petitioner and therefore, he is not tenant of the petitioner. I have already reached the conclusion that either as an attorney holder of Mehmooda Begum or on his own account, petitioner is entitled to possess the property in question and also seek eviction.
+    JUDEGMENT_DETAILS: 
+      "author": "Author: Manmeet Pritam Singh Arora",
+      "bench": "Bench: Manmeet Pritam Singh Arora",
+      "court": "Delhi High Court",
+      "judgementId": "90099718",
+      "title": "Mohd Salim vs Mohd Nabi on 7 December, 2022",
+      "url": "https://indiankanoon.org/doc/90099718/"
     
+    OUTPUT:In the Delhi High Court case of Mohd Salim vs Mohd Nabi on 7 December, 2022, presided by judge Manmeet Pritam Singh Arora, the court held that a tenant can be evicted by the landlord or the attorney holder if the tenant has never paid any rent.
+    
+    ------------------
+
     We have provided an existing summary up to a certain point: {existing_answer}
 
-
     CONTENT: {text}
     INQUIRY: {inquiry}
+    JUDGEMENT_DETAILS: {judgementDetails}
 
+    OUTPUT:
     
-    Final answer:
     `,
   inquiryTemplate: `Context: You are a distinguished legal expert specializing in Indian case law, possessing an unmatched ability to sift through precedents and apply them to new legal challenges. A lawyer seeks your guidance to identify relevant past judgments that could impact their client's standing in a current case. Your task is to distill crucial legal details from the case information provided, which may encompass elements like the legal subject, client specifics, factual background, nature of the dispute, relevant legal sections, and jurisdictional context.
 

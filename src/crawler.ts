@@ -25,7 +25,7 @@ class Crawler {
   spider: Spider | null = {};
   count: number = 0;
   textLengthMinimum: number = 200;
-  skippedPages: number;
+  skippedPages: string[] = [];
 
   constructor(
     ids: string[],
@@ -40,7 +40,7 @@ class Crawler {
     this.pages = [];
     this.spider = {};
     this.parsedPages = [];
-    this.skippedPages = 0;
+    this.skippedPages = [];
   }
   cleanHTMLString = (htmlString: any, id: string) => {
     const $ = cheerio.load(htmlString);
@@ -73,7 +73,7 @@ class Crawler {
     if (text.length > this.textLengthMinimum) {
       this.parsedPages.push(page);
     } else {
-      this.skippedPages++;
+      this.skippedPages.push(id);
       console.log("skipping ", "https://indiankanoon.org/doc/" + id + "/");
     }
   };
@@ -166,8 +166,8 @@ class Crawler {
     this.pages = [];
     return new Promise((resolve, reject) => {
       this.spider = new Spider({
-        concurrent: 5,
-        delay: 10,
+        concurrent: 3,
+        delay: 50,
         allowDuplicates: false,
         catchErrors: true,
         addReferrer: false,

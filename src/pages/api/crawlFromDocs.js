@@ -157,24 +157,24 @@ export default async function handler(
 
     const shouldSummarize = summmarize === "true";
 
-    pinecone = await new Pinecone({
-      apiKey: process.env.PINECONE_API_KEY!,
-    });
-    console.log(ids.length);
+    // pinecone = await new Pinecone({
+    //   apiKey: process.env.PINECONE_API_KEY!,
+    // });
+    // console.log(ids.length);
     const crawler = new Crawler(ids, crawlLimit, 200);
     var pages = await crawler.handleCleaningRequest(ids);
     pages = crawler.parsedPages;
+    console.log(crawler.skippedPages.length)
     
-    
-    const rateLimitedGetEmbedding = limiter.wrap(getEmbeddingForDoc);
+    // const rateLimitedGetEmbedding = limiter.wrap(getEmbeddingForDoc);
 
-    const embeddingsForDocuments = await splitAndEmbedDocs(
-      pages,
-      rateLimitedGetEmbedding,
-      `embeddingsAppended${new Date().toISOString()}.json`
-    );
-    const numberOfChunks = flattenDeep(embeddingsForDocuments);
-    console.log(numberOfChunks.length);
+    // const embeddingsForDocuments = await splitAndEmbedDocs(
+    //   pages,
+    //   rateLimitedGetEmbedding,
+    //   `embeddingsAppended${new Date().toISOString()}.json`
+    // );
+    // const numberOfChunks = flattenDeep(embeddingsForDocuments);
+    // console.log(numberOfChunks.length);
     // var vectorEmbeddings = await Promise.all(
     //   flattenDeep(embeddingsForDocuments)
     // );

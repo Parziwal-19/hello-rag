@@ -30,7 +30,6 @@ import {
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { PineconeStore } from "@langchain/pinecone";
 import { handleCleaningRequest } from "utils/cleanHtml";
-import { mapReduceSummariseDocument } from "./mapReduceSummarization";
 
 const TOP_K_DOCUMENTS = 5;
 const TOP_K_FOR_EACH_DOCUMENT = 3;
@@ -135,7 +134,7 @@ const handleRequest = async ({
         conversationHistory: () => formatChatHistory(conversationHistory),
       },
       CONDENSE_QUESTION_PROMPT,
-      llm,
+      chatLlm,
       new StringOutputParser(),
     ]);
     const inquiry = await standaloneQuestionChain.invoke({ question: prompt });
@@ -154,38 +153,23 @@ const handleRequest = async ({
       true
     );
 
-    const matchedDocumentIds =
-      matchedChunks &&
-      Array.from(
-        new Set(
-          matchedChunks.map((match) => {
-            const metadata = match.metadata as Metadata;
-            const { judgementId } = metadata;
-            return judgementId;
-          })
-        )
-      );
-
-    console.log({ matchedDocumentIds });
-    const documentsToBeSummarised = handleCleaningRequest(matchedDocumentIds);
-
     // 10 chunks ->
     // For each chunk -> get top 3 chunks similar to the chunk , from the same document
     // Summarise 4 chunks
     // Get 10 summaries
 
-    // const similarChunksForEachChunk = await Promise.all(
-    //   matchedChunks.map((chunk) =>
-    //     getMatchesFromEmbeddings(
-    //       chunk.values,
-    //       pinecone!,
-    //       TOP_K_FOR_EACH_DOCUMENT,
-    //       false,
-    //       { judgementId: chunk.metadata.judgementId }
-    //     )
-    //   )
-    // );
-    // console.log(JSON.stringify(similarChunksForEachChunk));
+    const similarChunksForEachChunk = await Promise.all(
+      matchedChunks.map((chunk) =>
+        getMatchesFromEmbeddings(
+          chunk.values,
+          pinecone!,
+          TOP_K_FOR_EACH_DOCUMENT,
+          false,
+          { judgementId: chunk.metadata.judgementId }
+        )
+      )
+    );
+    console.log(JSON.stringify(similarChunksForEachChunk));
     const SUMMARY_PROMPT = new PromptTemplate({
       inputVariables: ["text", "inquiry", "judgementDetails"],
       template: templates.summarizerDocumentTemplate,
@@ -201,31 +185,35 @@ const handleRequest = async ({
       template: templates.refineSummarizerDocumentTemplate,
     });
 
-    // const summariseChunksForOneDoc = async (docToBeSummarised) => {
-    //   console.log({ docToBeSummarised });
-    // const splitter = new RecursiveCharacterTextSplitter({
-    //   chunkSize: 2048,
-    //   chunkOverlap: 1,
-    // });
-
-    // const splitDocs = await splitter.splitText(docToBeSummarised.text);
-
-    //   const summarisationChain = loadSummarizationChain(chatLlm, {
-    //     questionPrompt: SUMMARY_PROMPT,
-    //     refinePrompt: SUMMARY_REFINE_PROMPT,
-    //     type: "map_reduce",
-    //     verbose: false,
-    //   });
-    //   console.log({ splitDocs });
-    //   return summarisationChain.invoke({
-    //     input_documents: splitDocs,
-    //     inquiry,
-    //     judgementDetails: JSON.stringify(omit(docToBeSummarised, ["text"])),
-    //   });
-    // };
+    const summariseChunksForOneDoc = (arrayOfChunks) => {
+      const summarisationChain = loadSummarizationChain(chatLlm, {
+        questionPrompt: SUMMARY_PROMPT,
+        refinePrompt: SUMMARY_REFINE_PROMPT,
+        type: "refine",
+        verbose: false,
+      });
+      console.log(
+        JSON.stringify({
+          docs: arrayOfChunks.map((c) => c.metadata.chunk),
+          inquiry,
+          judgementDetails: JSON.stringify(
+            omit(arrayOfChunks[0].metadata, ["chunk"])
+          ),
+        })
+      );
+      return summarisationChain.invoke({
+        input_documents: arrayOfChunks.map((c) => c.metadata.chunk),
+        inquiry,
+        judgementDetails: JSON.stringify(
+          omit(arrayOfChunks[0].metadata, ["chunk"])
+        ),
+      });
+    };
 
     const summarisedChunks = await Promise.all(
-      documentsToBeSummarised.map((doc) => mapReduceSummariseDocument(doc))
+      similarChunksForEachChunk.map((matchedChunksForOneDoc) =>
+        summariseChunksForOneDoc(matchedChunksForOneDoc)
+      )
     );
 
     console.log("summarisedChunks");
@@ -234,15 +222,38 @@ const handleRequest = async ({
       channel.publish({
         data: {
           event: "response",
-          token: summarisedChunks.join(
-            "\n----------------------------------\n"
-          ),
+          token: summarisedChunks
+            .map(({ output_text }) => output_text)
+            .join("\n----------------------------------\n"),
           interactionId,
         },
       });
     } catch (e) {
       console.log(e);
     }
+    // const matchedDocumentIds =
+    //   matches &&
+    //   Array.from(
+    //     new Set(
+    //       matches.map((match) => {
+    //         const metadata = match.metadata as Metadata;
+    //         const { judgementId } = metadata;
+    //         return judgementId;
+    //       })
+    //     )
+    //   );
+
+    // console.log({ matchedDocumentIds });
+    // const documentsToBeSummarised = handleCleaningRequest(matchedDocumentIds);
+
+    // const splitter = new RecursiveCharacterTextSplitter({
+    //   chunkSize: 2048,
+    //   chunkOverlap: 1,
+    // });
+
+    // const splitDocs = await splitter.createDocuments(
+    //   documentsToBeSummarised.map((t) => t.text)
+    // );
 
     // console.log(
     //   "summarising................................................................"

@@ -99,7 +99,7 @@ const splitAndEmbedDoc = async (doc, rateLimitedGetEmbedding, fileName) => {
   const chunksForDoc = await splitDoc(doc);
   if (chunksForDoc.length > MAX_CHUNK_SIZE) {
     console.log("too many chunks for doc" + doc.id);
-    fs.appendFileSync("./largeDocIds.txt", doc.id + "\n");
+    fs.appendFileSync(`./largeDocIds+run2k.txt`, doc.id + "\n");
     return [];
   }
   return chunksForDoc.map((chunk, index) =>
