@@ -24,7 +24,7 @@ function MyComponent() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   return (
     <div>

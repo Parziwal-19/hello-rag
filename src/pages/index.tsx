@@ -1,6 +1,11 @@
 import { useState } from "react";
 
-function Square({ value, onSquareClick }) {
+interface SquareProps {
+  value: string | null;
+  onSquareClick: () => void;
+}
+
+function Square({ value, onSquareClick }: SquareProps) {
   return (
     <button className="square" onClick={onSquareClick}>
       {value}
@@ -9,10 +14,10 @@ function Square({ value, onSquareClick }) {
 }
 
 function Board() {
-  const [xIsNext, setXIsNext] = useState(true);
-  const [squares, setSquares] = useState(Array(9).fill(null));
+  const [xIsNext, setXIsNext] = useState<boolean>(true);
+  const [squares, setSquares] = useState<(string | null)[]>(Array(9).fill(null));
 
-  function handleClick(i) {
+  function handleClick(i: number) {
     if (squares[i]) {
       return;
     }
