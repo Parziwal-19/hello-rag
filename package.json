@@ -23,6 +23,7 @@
     "@langchain/pinecone": "^0.0.3",
     "@next/font": "13.1.6",
     "@pinecone-database/pinecone": "^2.0.1",
+    "@supabase/supabase-js": "^2.43.5",
     "@xenova/transformers": "^2.15.0",
     "ably": "^1.2.5-beta.1",
     "bottleneck": "^2.19.5",
